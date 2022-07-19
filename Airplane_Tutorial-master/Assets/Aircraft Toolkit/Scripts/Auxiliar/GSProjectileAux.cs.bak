@@ -1,0 +1,79 @@
+using UnityEngine;
+using System.Collections;
+
+[RequireComponent(typeof(Rigidbody))]public class GSProjectileAux: MonoBehaviour {
+	private bool debugEnabled = false;
+	private bool alive = false;
+	private bool isActive = true;
+	private GSGunAux controller = null;
+	private GSProjectileAux nextSleeped = null;
+	private float lifeTime = -1.0f;
+	[HideInInspector]public Vector3 acceleration = Vector3.zero;
+	[HideInInspector]public Vector3 localAcceleration = Vector3.zero;
+	[HideInInspector]public float dragParallel = 0.0f;
+	[HideInInspector]public float dragPerpendicular = 0.01f;
+	private Vector3 velocity = Vector3.zero;
+	private Vector3 velocityProjection = Vector3.zero;
+	private Vector3 velocityPerpendicular = Vector3.zero;
+	void OnCollisionEnter(Collision collision) {
+		if (alive) {
+			alive = false;
+			if (debugEnabled) Debug.Log("GSProjectileAux: projectile impact!");
+			if (controller != null) if (controller.OnProjectileImpact(this, collision)) {
+				gameObject.SetActive(isActive = false);
+				return;
+			}
+			controller = null;
+			nextSleeped = null;
+			Object.Destroy(this);
+		}
+	}
+	void FixedUpdate() {
+		if (alive) {
+			if (lifeTime >= 0.0f) {
+				lifeTime -= Time.fixedDeltaTime;
+				if (acceleration.magnitude > 0.0f) rigidbody.AddForce(acceleration);
+				if (localAcceleration.magnitude > 0.0f) rigidbody.AddRelativeForce(localAcceleration);
+				if ((dragParallel > 0.0f) || (dragPerpendicular > 0.0f)) {
+					velocity = rigidbody.velocity;
+					velocityProjection = Vector3.Dot(velocity, gameObject.transform.forward) * gameObject.transform.forward;
+					velocityPerpendicular = velocity - velocityProjection;
+					if (dragParallel > 0.0f) velocityProjection = velocityProjection * (1f - Mathf.Clamp01(dragParallel * Time.fixedDeltaTime));
+					if (dragPerpendicular > 0.0f) velocityPerpendicular = velocityPerpendicular * (1f - Mathf.Clamp01(dragPerpendicular * Time.fixedDeltaTime));
+					rigidbody.velocity = velocityProjection + velocityPerpendicular;
+				}
+				if (lifeTime < 0.0f) {
+					alive = false;
+					if (debugEnabled) Debug.Log("GSProjectileAux: projectile timeout");
+					if (controller != null) if (controller.OnProjectileDied(this)) {
+						gameObject.SetActive(isActive = false);
+						return;
+					}
+					controller = null;
+					nextSleeped = null;
+					Object.Destroy(this);
+				}
+			}
+		} else {
+			if (isActive) {
+				gameObject.SetActive(isActive = false);
+			}
+		}
+	}
+	public bool projectileWakeUp(GSGunAux controller, float lifeTime, bool debugEnabled) {
+		if (alive) return false;
+		this.debugEnabled = debugEnabled;
+		this.alive = true;
+		this.lifeTime = lifeTime;
+		this.controller = controller;
+		gameObject.SetActive(isActive = true);
+		return alive;
+	}
+	public bool projectileSleep(GSProjectileAux nextSleeped) {
+		this.nextSleeped = nextSleeped;
+		return true;
+	}
+	public GSProjectileAux projectileNextSleeped() {
+		return nextSleeped;
+	}
+}
